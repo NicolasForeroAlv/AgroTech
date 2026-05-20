@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plataforma AgroTech AgStack - Simulador Agroindustrial</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <nav class="navbar navbar-dark bg-dark">
+        <div class="container-fluid">
+            <span class="navbar-brand mb-0 h1">
+                AgroTech AgStack - Simulador Agroindustrial Inteligente
+            </span>
+            <span class="text-light" id="dayCounter">Día: 0</span>
+        </div>
+    </nav>
+
+    <div class="container-fluid py-4">
+        <!-- Control Panel -->
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">Panel de Control</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-md-2">
+                                <label class="form-label">Tipo de Cultivo</label>
+                                <select class="form-select" id="cropSelect">
+                                    <option value="maize">Maíz</option>
+                                    <option value="wheat">Trigo</option>
+                                    <option value="rice">Arroz</option>
+                                    <option value="potato">Papa</option>
+                                    <option value="tomato">Tomate</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Área (hectáreas)</label>
+                                <input type="number" class="form-control" id="areaSize" value="1" min="0.1" step="0.1">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Humedad Inicial (%)</label>
+                                <input type="number" class="form-control" id="initialMoisture" value="60" min="0" max="100">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Temperatura Inicial (°C)</label>
+                                <input type="number" class="form-control" id="initialTemp" value="25" min="5" max="40">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">&nbsp;</label>
+                                <div class="d-flex gap-2">
+                                    <button class="btn btn-success w-100" id="startBtn" onclick="startSimulation()">
+                                        Iniciar Simulación
+                                    </button>
+                                    <button class="btn btn-warning w-100" id="resetBtn" onclick="resetSimulation()">
+                                        Reiniciar
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Simulation Controls -->
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="btn-group w-100" role="group">
+                    <button type="button" class="btn btn-primary" id="stepBtn" onclick="stepSimulation()">
+                        Paso Siguiente (1 día)
+                    </button>
+                    <button type="button" class="btn btn-info" onclick="autoRun(7)">
+                        Ejecutar 7 días
+                    </button>
+                    <button type="button" class="btn btn-info" onclick="autoRun(30)">
+                        Ejecutar 30 días
+                    </button>
+                    <button type="button" class="btn btn-secondary" onclick="exportData()">
+                        Descargar Datos
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Status Cards -->
+        <div class="row mb-4">
+            <div class="col-md-2">
+                <div class="status-card">
+                    <h6>Salud de Plantas</h6>
+                    <p class="value" id="plantHealth">0%</p>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="status-card">
+                    <h6>Productividad</h6>
+                    <p class="value" id="productivity">0 t/ha</p>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="status-card">
+                    <h6>Humedad Suelo</h6>
+                    <p class="value" id="soilMoisture">0%</p>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="status-card">
+                    <h6>Temperatura</h6>
+                    <p class="value" id="temperature">0°C</p>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="status-card">
+                    <h6>pH Suelo</h6>
+                    <p class="value" id="phLevel">0</p>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="status-card">
+                    <h6>Nitrógeno</h6>
+                    <p class="value" id="nitrogen">0</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Alerts and Recommendations -->
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-warning text-dark">
+                        <h5 class="mb-0">Recomendaciones Inteligentes</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="recommendationsPanel">
+                            <p class="text-muted">Inicia una simulación para ver recomendaciones</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Irrigation Decision -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-info text-white">
+                        <h5 class="mb-0">Decisión de Riego Automático</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="irrigationPanel">
+                            <p class="text-muted">Inicia una simulación para ver decisiones de riego</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-danger text-white">
+                        <h5 class="mb-0">Plagas y Enfermedades</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-6">
+                                <h6>Presión de Plagas</h6>
+                                <div class="progress">
+                                    <div class="progress-bar bg-warning" id="pestBar" role="progressbar" style="width: 0%">
+                                        <span id="pestValue">0%</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <h6>Presión de Enfermedades</h6>
+                                <div class="progress">
+                                    <div class="progress-bar bg-danger" id="diseaseBar" role="progressbar" style="width: 0%">
+                                        <span id="diseaseValue">0%</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts -->
+        <div class="row mb-4">
+            <div class="col-lg-6">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="mb-0">Humedad del Suelo vs Temperatura</h5>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="moistureChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="mb-0">Nutrientes del Suelo</h5>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="nutrientsChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mb-4">
+            <div class="col-lg-6">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="mb-0">Productividad</h5>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="productivityChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="mb-0">Salud de Plantas</h5>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="healthChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Detailed Metrics Table -->
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-secondary text-white">
+                        <h5 class="mb-0">Métricas Detalladas</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Métrica</th>
+                                        <th>Valor</th>
+                                        <th>Rango Óptimo</th>
+                                        <th>Estado</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>Humedad Suelo</td>
+                                        <td id="metric-moisture">-</td>
+                                        <td>60-80%</td>
+                                        <td><span id="status-moisture" class="badge">-</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td>Temperatura</td>
+                                        <td id="metric-temp">-</td>
+                                        <td>18-28°C</td>
+                                        <td><span id="status-temp" class="badge">-</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td>pH Suelo</td>
+                                        <td id="metric-ph">-</td>
+                                        <td>6.0-7.0</td>
+                                        <td><span id="status-ph" class="badge">-</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td>Nitrógeno</td>
+                                        <td id="metric-nitrogen">-</td>
+                                        <td>100-200</td>
+                                        <td><span id="status-nitrogen" class="badge">-</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td>Salud Plantas</td>
+                                        <td id="metric-health">-</td>
+                                        <td>>80%</td>
+                                        <td><span id="status-health" class="badge">-</span></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
