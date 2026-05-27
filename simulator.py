@@ -112,14 +112,19 @@ class CropSimulator:
     
     def _simulate_weather(self):
         """Simula condiciones climáticas"""
-        # Variación de temperatura (patrón estacional)
-        temp_variation = 5 * math.sin(self.day / 90) + random.uniform(-3, 3)
-        self.temperature = max(5, min(40, self.temperature + temp_variation))
-        
-        # Simulación de lluvia (probabilística)
-        rainfall_probability = 0.3
+        # Variación de temperatura (patrón estacional más pronunciado)
+        seasonal_variation = 8 * math.sin(self.day / 60)  # Ciclo más corto
+        daily_variation = random.uniform(-4, 4)
+        temp_variation = seasonal_variation + daily_variation
+    
+        # Temperatura base según el día (simula estaciones)
+        base_temp = self.initial_temperature + (math.sin(self.day / 45) * 10)
+        self.temperature = max(10, min(38, base_temp + temp_variation))
+    
+        # Simulación de lluvia (probabilidad variable)
+        rainfall_probability = 0.25 if self.soil_moisture < 70 else 0.15
         if random.random() < rainfall_probability:
-            self.rainfall = random.uniform(5, 30)
+            self.rainfall = random.uniform(0, 15)  # Lluvia más moderada
         else:
             self.rainfall = 0
     
@@ -127,28 +132,39 @@ class CropSimulator:
         """Simula cambios en el suelo"""
         config = self.crop_config[self.crop_type]
         
-        # Evaporación según temperatura
-        evaporation_rate = 0.3 + (self.temperature / 100)
+        # Evaporación MÁS AGRESIVA según temperatura
+        evaporation_rate = 0.8 + (self.temperature / 50)  # 0.8 a 1.6
+        
+        # Pérdida por transpiración de la planta
+        transpiration = 0.5 + (self.plant_health / 200)  # 0.5 a 1.0
+        
+        # Drenaje natural cuando hay exceso de humedad
+        drainage = 0.3 if self.soil_moisture > 80 else 0
         
         # Cambio en humedad del suelo
-        moisture_loss = evaporation_rate + (self.nitrogen / 300)
+        moisture_loss = evaporation_rate + transpiration + drainage
         self.soil_moisture = max(0, self.soil_moisture - moisture_loss)
-        self.soil_moisture += self.rainfall
+        
+        # Añadir lluvia (más moderada)
+        self.soil_moisture += self.rainfall * 0.5  # La lluvia no se absorbe 100%
+        
+        # Añadir riego
         self.soil_moisture += self.irrigation_applied
+        
+        # Limitar a 100%
         self.soil_moisture = min(100, self.soil_moisture)
         
-        # Cambio en nutrientes
-        self.nitrogen = max(0, self.nitrogen - 0.8)
-        self.potassium = max(0, self.potassium - 0.6)
-        self.phosphorus = max(0, self.phosphorus - 0.5)
+        # Cambio en nutrientes (más lento)
+        self.nitrogen = max(0, self.nitrogen - 0.3)  # Reducido de 0.8 a 0.3
+        self.potassium = max(0, self.potassium - 0.2)
+        self.phosphorus = max(0, self.phosphorus - 0.15)
         
         # pH ajustado por humedad
-        self.ph_level = 6.5 + (self.soil_moisture - 60) / 100
+        self.ph_level = 6.5 + (self.soil_moisture - 60) / 150
         self.ph_level = max(5.5, min(8.0, self.ph_level))
         
         # Reiniciar riego aplicado
         self.irrigation_applied = 0
-    
     def _calculate_plant_health(self):
         """Calcula la salud de las plantas"""
         config = self.crop_config[self.crop_type]
@@ -254,31 +270,28 @@ class CropSimulator:
                 f"(óptimo: {config['optimal_moisture']}%)"
             )
         elif self.soil_moisture < config['optimal_moisture']:
-            recommendations.append(
-                f"Aumentar riego gradualmente"
-            )
+            recommendations.append("Aumentar riego gradualmente")
         
         if self.soil_moisture > 85:
-            recommendations.append(
-                "Riesgo de encharcamiento - Mejorar drenaje"
-            )
+            recommendations.append("Riesgo de encharcamiento - Mejorar drenaje")
         
         # Recomendaciones de fertilización
         if self.nitrogen < config['nitrogen_demand'] * 0.5:
             recommendations.append(
-                f"Aplicar fertilizante nitrogenado urgentemente"
+                f"Aplicar fertilizante nitrogenado urgentemente "
+                f"(Nitrógeno: {self.nitrogen:.0f})"
+            )
+        elif self.nitrogen < config['nitrogen_demand'] * 0.7:
+            recommendations.append(
+                "Considerar fertilización pronto - Nitrógeno bajando"
             )
         
         # Recomendaciones de temperatura
-        if abs(self.temperature - config['optimal_temp']) > 10:
+        if abs(self.temperature - config['optimal_temp']) > 8:
             if self.temperature > config['optimal_temp']:
-                recommendations.append(
-                    "Temperatura muy alta - Aumentar riego"
-                )
+                recommendations.append("Temperatura muy alta - Aumentar riego")
             else:
-                recommendations.append(
-                    "Temperatura baja - Proteger cultivo"
-                )
+                recommendations.append("Temperatura baja - Proteger cultivo")
         
         # Recomendaciones de plagas
         if self.pest_pressure > 50:
@@ -293,12 +306,10 @@ class CropSimulator:
             )
         
         if not recommendations:
-            recommendations.append(
-                "Condiciones óptimas - Continuar monitoreo"
-            )
+            recommendations.append("Condiciones óptimas - Continuar monitoreo")
         
-        return recommendations[:5]  # Máximo 5 recomendaciones
-    
+        return recommendations[:5]  # Limitar a 5 recomendaciones
+
     def get_irrigation_decision(self) -> Dict:
         """Toma decisión automática de riego"""
         config = self.crop_config[self.crop_type]
@@ -308,17 +319,26 @@ class CropSimulator:
             'reason': ''
         }
         
+        # Verificar humedad excesiva PRIMERO
+        if self.soil_moisture > config['optimal_moisture'] + 15:
+            decision['irrigate'] = False
+            decision['reason'] = f"Humedad excesiva: {self.soil_moisture:.1f}% - Suspender riego"
+
         # Decisión basada en humedad
-        if self.soil_moisture < config['optimal_moisture'] - 5:
+        elif self.soil_moisture < config['optimal_moisture'] - 5:
             decision['irrigate'] = True
             deficit = config['optimal_moisture'] - self.soil_moisture
             decision['amount'] = min(30, deficit * 0.8)
             decision['reason'] = f"Déficit de humedad: {deficit:.1f}%"
         
         # Considerar lluvia
-        if self.rainfall > 10:
+        elif self.rainfall > 10:
             decision['irrigate'] = False
             decision['reason'] = f"Lluvia suficiente: {self.rainfall:.1f}mm"
+
+        #Razón por defecto
+        else:
+            decision['reason'] = f"Humedad adecuada: {self.soil_moisture:.1f}%"
         
         # Aplicar riego si es necesario
         if decision['irrigate']:

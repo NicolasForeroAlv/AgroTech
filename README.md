@@ -1,8 +1,7 @@
 # 🌾 Plataforma AgroTech AgStack - Simulador Agroindustrial Inteligente
 
 ## COSAS MALAS, ARREGLAR:
-
- - No se muestra ninguna informacion en el sistema de riego automatica. Pone un N/A y sin razones, solo en los aumentos por un dia muestra razon
+ - Por ahora está todo perfecto
 
 ## Cómo ejecutar
 

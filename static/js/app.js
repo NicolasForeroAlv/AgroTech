@@ -283,7 +283,7 @@ function stepSimulation() {
 }
 
 // Ejecución automática
-function autoRun(steps) {
+/**function autoRun(steps) {
     if (!simulationRunning) {
         alert('Por favor, inicia una simulación primero');
         return;
@@ -320,43 +320,101 @@ function autoRun(steps) {
             console.error('Error:', error);
             mostrarError('Error al ejecutar simulación automática');
         });
+}**/
+//Probar con esta funcion, por si sirve mejor
+function autoRun(steps) {
+    if (!simulationRunning) {
+        alert('Por favor, inicia una simulación primero');
+        return;
+    }
+
+    fetch('/api/simulation/auto-run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ steps })
+    })
+        .then(res => res.json())
+        .then(data => {
+            if (data.status !== 'success') {
+                mostrarError(data.message || 'Error en simulación automática');
+                return;
+            }
+
+            // 1. Renderizar gráficos día por día (tu validación interna ya evita duplicados)
+            data.results.forEach((state, i) => {
+                const day = simulatorDay + i + 1;
+                updateCharts(day, state);
+            });
+
+            // 2. Acumular historial
+            simulationHistory.push(...data.results);
+
+            // 3. Actualizar UI con el último estado
+            const finalState = data.results[data.results.length - 1];
+            const finalDay = simulatorDay + steps;
+
+            // Evita doble llamada a updateCharts (ya se hizo en el loop)
+            updateMetrics(finalState);
+            updateRecommendations(data.recommendations);
+            updateIrrigation(data.irrigation_decision);
+            updateDetailedMetrics(finalState);
+            document.getElementById('dayCounter').textContent = 'Día: ' + finalDay;
+
+            // 4. Actualizar variable global
+            simulatorDay = finalDay;
+        })
+        .catch(err => {
+            console.error('Error:', err);
+            mostrarError('Error al ejecutar simulación automática');
+        });
 }
 
+// Reiniciar simulación
 // Reiniciar simulación
 function resetSimulation() {
     fetch('/api/simulation/reset', {
         method: 'POST'
     })
-        .then(response => response.json())
-        .then(data => {
-            if (data.status === 'success') {
-                simulationRunning = false;
-                simulationHistory = [];
-                document.getElementById('stepBtn').disabled = true;
-                document.getElementById('startBtn').disabled = false;
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            simulationRunning = false;
+            simulationHistory = [];
+            simulatorDay = 0; // ✅ Resetear contador de días
+            
+            document.getElementById('stepBtn').disabled = true;
+            document.getElementById('startBtn').disabled = false;
+            
+            // Limpiar gráficos
+            Object.values(charts).forEach(chart => {
+                chart.data.labels = [];
+                chart.data.datasets.forEach(dataset => dataset.data = []);
+                chart.update();
+            });
 
-                // Limpiar gráficos
-                Object.values(charts).forEach(chart => {
-                    chart.data.labels = [];
-                    chart.data.datasets.forEach(dataset => dataset.data = []);
-                    chart.update();
-                });
-
-                // Resetear valores
-                updateMetrics({});
-                console.log('Simulación reiniciada');
-            }
-        })
-        .catch(error => console.error('Error:', error));
+            // ✅ Resetear TODOS los valores
+            updateMetrics({});
+            updateRecommendations([]);  // ✅ Pasar array vacío (no objeto)
+            updateIrrigation({});        // ✅ Pasar objeto vacío
+            updateDetailedMetrics({});   // ✅ Pasar objeto vacío
+            
+            // ✅ Resetear contador de días en navbar
+            document.getElementById('dayCounter').textContent = 'Día: 0';
+            
+            console.log('Simulación reiniciada');
+        }
+    })
+    .catch(error => console.error('Error:', error));
 }
 
 // Actualizar interfaz
 function updateUI(state, day, recommendations, irrigation_decision) {
+    const cropType = document.getElementById('cropSelect').value;
     updateMetrics(state);
     updateCharts(day, state);
     updateRecommendations(recommendations);
     updateIrrigation(irrigation_decision);
-    updateDetailedMetrics(state);
+    updateDetailedMetrics(state, cropType);
 
     // Actualizar contador de días
     document.getElementById('dayCounter').textContent = 'Día: ' + day;
@@ -466,9 +524,49 @@ function updateIrrigation(irrigation) {
     `;
 }
 
+
 // Actualizar métricas detalladas
 function updateDetailedMetrics(state) {
     if (!state || Object.keys(state).length === 0) return;
+
+    // Obtener tipo de cultivo seleccionado
+    const cropType = document.getElementById('cropSelect').value;
+
+    // Configuración de rangos óptimos por cultivo
+    const cropOptimals = {
+        'maize': {
+            moisture: [65, 75],
+            temp: [22, 28],
+            ph: [6.0, 7.0],
+            nitrogen: [130, 170]
+        },
+        'wheat': {
+            moisture: [60, 70],
+            temp: [15, 21],
+            ph: [6.5, 7.5],
+            nitrogen: [80, 120]
+        },
+        'rice': {
+            moisture: [80, 90],
+            temp: [25, 31],
+            ph: [6.3, 7.3],
+            nitrogen: [100, 140]
+        },
+        'potato': {
+            moisture: [70, 80],
+            temp: [15, 21],
+            ph: [5.7, 6.7],
+            nitrogen: [120, 160]
+        },
+        'tomato': {
+            moisture: [65, 75],
+            temp: [23, 29],
+            ph: [6.0, 7.0],
+            nitrogen: [100, 140]
+        }
+    };
+
+    const optimal = cropOptimals[cropType] || cropOptimals['maize'];
 
     // Función auxiliar para obtener estado
     function getStatus(value, min, max) {
@@ -478,42 +576,54 @@ function updateDetailedMetrics(state) {
     }
 
     // Humedad
-    const moistureStatus = getStatus(state.soil_moisture, 60, 80);
+    const moistureStatus = getStatus(state.soil_moisture, optimal.moisture[0], optimal.moisture[1]);
     document.getElementById('metric-moisture').textContent = state.soil_moisture.toFixed(1) + '%';
+    document.querySelector('#metric-moisture').parentElement.children[2].textContent =
+        `${optimal.moisture[0]}-${optimal.moisture[1]}%`;
     document.getElementById('status-moisture').textContent =
         moistureStatus === 'success' ? 'Óptima' :
             moistureStatus === 'warning' ? 'Excesiva' : 'Déficit';
     document.getElementById('status-moisture').className =
-        'badge badge-' + (moistureStatus === 'danger' ? 'danger' : moistureStatus);
+        'badge badge-' + (moistureStatus === 'danger' ? 'danger' :
+            moistureStatus === 'warning' ? 'warning' : 'success');
 
     // Temperatura
-    const tempStatus = getStatus(state.temperature, 18, 28);
+    const tempStatus = getStatus(state.temperature, optimal.temp[0], optimal.temp[1]);
     document.getElementById('metric-temp').textContent = state.temperature.toFixed(1) + '°C';
+    document.querySelector('#metric-temp').parentElement.children[2].textContent =
+        `${optimal.temp[0]}-${optimal.temp[1]}°C`;
     document.getElementById('status-temp').textContent =
         tempStatus === 'success' ? 'Óptima' :
             tempStatus === 'warning' ? 'Alta' : 'Baja';
     document.getElementById('status-temp').className =
-        'badge badge-' + (tempStatus === 'danger' ? 'danger' : tempStatus);
+        'badge badge-' + (tempStatus === 'danger' ? 'danger' :
+            tempStatus === 'warning' ? 'warning' : 'success');
 
     // pH
-    const phStatus = getStatus(state.ph_level, 6.0, 7.0);
+    const phStatus = getStatus(state.ph_level, optimal.ph[0], optimal.ph[1]);
     document.getElementById('metric-ph').textContent = state.ph_level.toFixed(2);
+    document.querySelector('#metric-ph').parentElement.children[2].textContent =
+        `${optimal.ph[0]}-${optimal.ph[1]}`;
     document.getElementById('status-ph').textContent =
         phStatus === 'success' ? 'Óptimo' :
             phStatus === 'warning' ? 'Alto' : 'Bajo';
     document.getElementById('status-ph').className =
-        'badge badge-' + (phStatus === 'danger' ? 'danger' : phStatus);
+        'badge badge-' + (phStatus === 'danger' ? 'danger' :
+            phStatus === 'warning' ? 'warning' : 'success');
 
     // Nitrógeno
-    const nitrogenStatus = getStatus(state.nitrogen, 100, 200);
+    const nitrogenStatus = getStatus(state.nitrogen, optimal.nitrogen[0], optimal.nitrogen[1]);
     document.getElementById('metric-nitrogen').textContent = state.nitrogen.toFixed(1);
+    document.querySelector('#metric-nitrogen').parentElement.children[2].textContent =
+        `${optimal.nitrogen[0]}-${optimal.nitrogen[1]}`;
     document.getElementById('status-nitrogen').textContent =
         nitrogenStatus === 'success' ? 'Adecuado' :
             nitrogenStatus === 'warning' ? 'Exceso' : 'Déficit';
     document.getElementById('status-nitrogen').className =
-        'badge badge-' + (nitrogenStatus === 'danger' ? 'danger' : nitrogenStatus);
+        'badge badge-' + (nitrogenStatus === 'danger' ? 'danger' :
+            nitrogenStatus === 'warning' ? 'warning' : 'success');
 
-    // Salud
+    // Salud (genérico para todos los cultivos)
     const healthStatus = state.plant_health > 80 ? 'success' :
         state.plant_health > 50 ? 'warning' : 'danger';
     document.getElementById('metric-health').textContent = state.plant_health.toFixed(1) + '%';
@@ -573,15 +683,6 @@ function downloadCSV(csv, filename) {
 function mostrarError(mensaje) {
     // Opción 1: Alert nativo (simple)
     alert('⚠️ Error de validación:\n\n' + mensaje);
-
-    // Opción 2: Toast/Modal (mejor UX - descomenta si tienes Bootstrap)
-    /*
-    const toast = document.getElementById('errorToast');
-    if (toast) {
-        document.querySelector('#errorToast .toast-body').textContent = mensaje;
-        new bootstrap.Toast(toast).show();
-    }
-    */
 
     // Opción 3: Insertar en DOM (personalizable)
     /*
