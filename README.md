@@ -2,6 +2,10 @@
 
 ## COSAS MALAS, ARREGLAR:
  - Por ahora está todo perfecto
+ - Posibles mejoras: 
+   - Fertilizante automatico
+   - Mejorar la limpieza de los datos en la tabla de condiciones
+   - Mirar lo de estados optimos dentro de la tabla
 
 ## Cómo ejecutar
 
